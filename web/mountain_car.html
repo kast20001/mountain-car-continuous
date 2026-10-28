@@ -1,0 +1,605 @@
+<title>Симулятор Mountain Car</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: lab bench — the track canvas is the instrument, readouts and controls sit beside it like a panel. */
+:root {
+  --bg: #e9eef2;
+  --surface: #ffffff;
+  --ink: #16212c;
+  --muted: #5a6876;
+  --line: #cfd8e0;
+  --sky: #f6f9fb;
+  --hill: #3d6b5c;
+  --hill-fill: #d6e4dd;
+  --car: #e09a2b;
+  --flag: #c8372d;
+  --accent: #2557c7;
+  --accent-soft: #e2eafb;
+  --good: #23824f;
+  --warn: #b5651d;
+  --font-display: "Unbounded", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10161c; --surface: #18212a; --ink: #e4ebf1; --muted: #93a2b0; --line: #2c3946;
+    --sky: #141c24; --hill: #7fbfa6; --hill-fill: #1f3530; --car: #f0b04c; --flag: #ef6a5e;
+    --accent: #7ea4ff; --accent-soft: #1d2a45; --good: #5fcf8f; --warn: #e3a05c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10161c; --surface: #18212a; --ink: #e4ebf1; --muted: #93a2b0; --line: #2c3946;
+  --sky: #141c24; --hill: #7fbfa6; --hill-fill: #1f3530; --car: #f0b04c; --flag: #ef6a5e;
+  --accent: #7ea4ff; --accent-soft: #1d2a45; --good: #5fcf8f; --warn: #e3a05c;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.wrap {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 20px;
+}
+header { display: grid; gap: 6px; }
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(24px, 4vw, 36px);
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.lede { margin: 0; color: var(--muted); max-width: 65ch; }
+
+.bench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 860px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.track-wrap { position: relative; }
+#track {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  max-width: 100%;
+  border-radius: 6px;
+  background: var(--sky);
+  touch-action: none;
+}
+.status {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.status[data-state="run"] { color: var(--accent); border-color: var(--accent); }
+.status[data-state="win"] { color: var(--good); border-color: var(--good); }
+.status[data-state="timeout"] { color: var(--warn); border-color: var(--warn); }
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.seg button {
+  font: 500 14px var(--font-body);
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
+.btn {
+  font: 600 14px var(--font-body);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); min-width: 96px; }
+.btn:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.policy-note {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+  min-height: 2.6em;
+}
+.policy-note code, .explain code { font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
+
+.row { display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: center; }
+.field { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); }
+.field input[type="range"] { width: 150px; accent-color: var(--accent); }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+
+.manual-pad { display: none; gap: 10px; }
+.manual-pad.on { display: flex; }
+.manual-pad .btn { flex: 1; padding: 14px; font-size: 18px; user-select: none; -webkit-user-select: none; touch-action: none; }
+.manual-pad .btn.held { background: var(--accent-soft); border-color: var(--accent); }
+
+.readouts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  margin: 0;
+}
+.readouts div { display: grid; gap: 0; }
+.readouts dt { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.readouts dd { margin: 0; font-family: var(--font-mono); font-size: 20px; font-variant-numeric: tabular-nums; }
+.readouts .wide { grid-column: 1 / -1; }
+
+.force { display: grid; gap: 4px; }
+.force-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+.force-bar { position: relative; height: 10px; border-radius: 5px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.force-bar .mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--muted); }
+.force-bar .fill { position: absolute; top: 0; bottom: 0; background: var(--accent); }
+
+.side-title { margin: 0; font: 600 13px var(--font-body); color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+#phase { display: block; width: 100%; aspect-ratio: 4 / 3; max-width: 100%; background: var(--sky); border-radius: 6px; }
+
+.lower { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+@media (max-width: 860px) { .lower { grid-template-columns: minmax(0, 1fr); } }
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-weight: 600; color: var(--muted); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+td.num, th.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.empty { color: var(--muted); font-size: 14px; margin: 0; }
+.tag { font-family: var(--font-mono); font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); }
+.tag.win { color: var(--good); border-color: var(--good); }
+.tag.timeout { color: var(--warn); border-color: var(--warn); }
+
+.explain { display: grid; gap: 10px; font-size: 14px; }
+.explain p { margin: 0; max-width: 65ch; }
+.formula {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  white-space: pre;
+}
+.keys { font-size: 13px; color: var(--muted); margin: 0; }
+kbd { font-family: var(--font-mono); font-size: 12px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--surface); color: var(--ink); }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Gymnasium · MountainCarContinuous-v0</span>
+    <h1>Симулятор Mountain Car</h1>
+    <p class="lede">Та же физика, что в среде Gymnasium, и те же две политики, что в проекте. Запустите эвристику и обученную CEM-политику с одной стартовой точки и сравните, или попробуйте заехать сами.</p>
+  </header>
+
+  <section class="bench">
+    <div class="panel">
+      <div class="track-wrap">
+        <canvas id="track" aria-label="Машина в яме между двумя холмами, флаг справа на позиции 0.45"></canvas>
+        <span class="status" id="status" data-state="idle">готово к старту</span>
+      </div>
+
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Кто управляет машиной">
+          <button type="button" id="pol-cem" data-policy="cem" aria-pressed="true">CEM</button>
+          <button type="button" id="pol-heuristic" data-policy="heuristic" aria-pressed="false">Эвристика</button>
+          <button type="button" id="pol-manual" data-policy="manual" aria-pressed="false">Вручную</button>
+        </div>
+        <button type="button" class="btn primary" id="run">Старт</button>
+        <button type="button" class="btn" id="reset">Сброс</button>
+      </div>
+
+      <p class="policy-note" id="policy-note"></p>
+
+      <div class="manual-pad" id="manual-pad">
+        <button type="button" class="btn" id="pad-left" aria-label="Толкать влево">← влево</button>
+        <button type="button" class="btn" id="pad-right" aria-label="Толкать вправо">вправо →</button>
+      </div>
+
+      <div class="row">
+        <label class="field" for="start-x">Старт
+          <input type="range" id="start-x" min="-0.6" max="-0.4" step="0.005" value="-0.5">
+          <span class="mono" id="start-x-val">−0.500</span>
+        </label>
+        <button type="button" class="btn" id="random-start">Случайный старт</button>
+        <div class="seg" role="group" aria-label="Скорость воспроизведения">
+          <button type="button" id="spd-05" data-speed="0.5" aria-pressed="false">×0.5</button>
+          <button type="button" id="spd-1" data-speed="1" aria-pressed="true">×1</button>
+          <button type="button" id="spd-3" data-speed="3" aria-pressed="false">×3</button>
+        </div>
+      </div>
+      <p class="keys"><kbd>Пробел</kbd> старт/пауза · <kbd>R</kbd> сброс · <kbd>←</kbd> <kbd>→</kbd> ручное управление</p>
+    </div>
+
+    <aside class="panel">
+      <dl class="readouts">
+        <div><dt>Шаг</dt><dd id="r-step">0</dd></div>
+        <div><dt>Награда</dt><dd id="r-reward">0.00</dd></div>
+        <div><dt>Позиция x</dt><dd id="r-x">−0.500</dd></div>
+        <div><dt>Скорость v</dt><dd id="r-v">0.0000</dd></div>
+        <div class="wide force">
+          <div class="force-label"><span>−1</span><span>сила a = <span id="r-a">0.00</span></span><span>+1</span></div>
+          <div class="force-bar"><span class="mid"></span><span class="fill" id="force-fill"></span></div>
+        </div>
+      </dl>
+      <h2 class="side-title">Фазовая плоскость</h2>
+      <canvas id="phase" aria-label="Траектория в координатах позиция и скорость"></canvas>
+      <p class="keys">Горизонталь: позиция от −1.2 до 0.6. Вертикаль: скорость от −0.07 до 0.07. Пунктир — прошлый заезд.</p>
+    </aside>
+  </section>
+
+  <section class="lower">
+    <div class="panel">
+      <h2 class="side-title">Заезды в этой вкладке</h2>
+      <p class="empty" id="runs-empty">Пока нет заездов. Нажмите «Старт».</p>
+      <div class="table-scroll" id="runs-wrap" hidden>
+        <table>
+          <thead><tr><th>Политика</th><th class="num">Старт x</th><th class="num">Шагов</th><th class="num">Награда</th><th>Итог</th></tr></thead>
+          <tbody id="runs"></tbody>
+        </table>
+      </div>
+      <h2 class="side-title">Оценка в Python, 100 эпизодов</h2>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Политика</th><th class="num">Награда</th><th class="num">Шагов</th><th class="num">Успех</th></tr></thead>
+          <tbody>
+            <tr><td>Эвристика</td><td class="num">92.05 ± 0.20</td><td class="num">79.5</td><td class="num">100 %</td></tr>
+            <tr><td>CEM</td><td class="num">98.57 ± 0.21</td><td class="num">317.9</td><td class="num">100 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel explain">
+      <h2 class="side-title">Что здесь считается</h2>
+      <p>Каждый шаг двигатель толкает машину с силой <code>a</code> от −1 до 1, а гравитация тянет вниз по склону. Двигатель слабее гравитации, поэтому въехать сразу нельзя: нужно раскачаться.</p>
+      <div class="formula">v ← clip(v + 0.0015·a − 0.0025·cos(3x), ±0.07)
+x ← clip(x + v, −1.2 … 0.6)
+награда за шаг = −0.1·a²,  +100 за флаг (x ≥ 0.45)</div>
+      <p>Эпизод заканчивается у флага или через 999 шагов. Задача считается решённой при средней награде от 90.</p>
+      <p>CEM-политика давит слабее эвристики: заезд длится дольше, но штраф за энергию меньше, и итоговая награда выше.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  // ---- среда: та же физика, что в gymnasium Continuous_MountainCarEnv
+  const MIN_X = -1.2, MAX_X = 0.6, MAX_V = 0.07, GOAL_X = 0.45, POWER = 0.0015, MAX_STEPS = 999;
+  const height = x => Math.sin(3 * x) * 0.45 + 0.55;
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+
+  function envStep(s, a) {
+    const force = clamp(a, -1, 1);
+    let v = clamp(s.v + force * POWER - 0.0025 * Math.cos(3 * s.x), -MAX_V, MAX_V);
+    let x = clamp(s.x + v, MIN_X, MAX_X);
+    if (x === MIN_X && v < 0) v = 0;
+    const done = x >= GOAL_X && v >= 0;
+    const reward = (done ? 100 : 0) - 0.1 * a * a;
+    return { x, v, done, reward };
+  }
+
+  // ---- политики
+  const THETA = [0.005255200713810056, 0.3264046055524653, 0.11732748292666523, -0.013994838740795802];
+  const POLICIES = {
+    cem: {
+      name: "CEM",
+      note: "a = tanh(0.005·x̂ + 0.326·v̂ + 0.117·sign(v) − 0.014). Веса подобраны методом кросс-энтропии: мягкая раскачка силой 0.1–0.4.",
+      act: s => {
+        const f = [(s.x + 0.3) / 0.9, s.v / 0.07, Math.sign(s.v), 1];
+        return Math.tanh(f[0] * THETA[0] + f[1] * THETA[1] + f[2] * THETA[2] + f[3] * THETA[3]);
+      },
+    },
+    heuristic: {
+      name: "Эвристика",
+      note: "a = sign(v): толкать на полную в сторону движения, на старте влево. Быстро, но тратит много энергии.",
+      act: s => (s.v === 0 ? -1 : s.v > 0 ? 1 : -1),
+    },
+    manual: {
+      name: "Вручную",
+      note: "Удерживайте ← и → (или кнопки ниже). Попробуйте сначала просто ехать вправо: машина застрянет на склоне.",
+      act: () => (keys.right ? 1 : 0) - (keys.left ? 1 : 0),
+    },
+  };
+
+  // ---- состояние
+  const keys = { left: false, right: false };
+  let policy = "cem", speed = 1;
+  let state, steps, total, lastA, path, ghost = [], running = false, outcome = null, acc = 0;
+
+  const $ = id => document.getElementById(id);
+  const fmt = (n, d) => (n < 0 ? "−" : "") + Math.abs(n).toFixed(d);
+
+  function reset() {
+    const x0 = parseFloat($("start-x").value);
+    state = { x: x0, v: 0 };
+    steps = 0; total = 0; lastA = 0; outcome = null; running = false; acc = 0;
+    path = [[state.x, state.v]];
+    setStatus("idle", "готово к старту");
+    $("run").textContent = "Старт";
+    updateReadouts(); draw();
+  }
+
+  function setStatus(kind, text) { const el = $("status"); el.dataset.state = kind; el.textContent = text; }
+
+  function tick() {
+    const a = POLICIES[policy].act(state);
+    const r = envStep(state, a);
+    state = { x: r.x, v: r.v };
+    steps++; total += r.reward; lastA = clamp(a, -1, 1);
+    path.push([state.x, state.v]);
+    if (r.done) finish("win");
+    else if (steps >= MAX_STEPS) finish("timeout");
+  }
+
+  function finish(kind) {
+    running = false; outcome = kind;
+    setStatus(kind, kind === "win" ? "флаг взят" : "время вышло: 999 шагов");
+    $("run").textContent = "Ещё раз";
+    ghost = path.slice();
+    logRun(kind);
+  }
+
+  function logRun(kind) {
+    $("runs-empty").hidden = true; $("runs-wrap").hidden = false;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${POLICIES[policy].name}</td><td class="num">${fmt(path[0][0], 3)}</td><td class="num">${steps}</td><td class="num">${fmt(total, 2)}</td>` +
+      `<td><span class="tag ${kind}">${kind === "win" ? "флаг" : "не доехал"}</span></td>`;
+    const body = $("runs");
+    body.prepend(tr);
+    while (body.children.length > 8) body.lastChild.remove();
+  }
+
+  function toggleRun() {
+    if (outcome) reset();
+    running = !running;
+    setStatus(running ? "run" : "idle", running ? "едет" : "пауза");
+    $("run").textContent = running ? "Пауза" : "Продолжить";
+  }
+
+  function updateReadouts() {
+    $("r-step").textContent = steps;
+    $("r-reward").textContent = fmt(total, 2);
+    $("r-x").textContent = fmt(state.x, 3);
+    $("r-v").textContent = fmt(state.v, 4);
+    $("r-a").textContent = fmt(lastA, 2);
+    const fill = $("force-fill");
+    const w = Math.abs(lastA) * 50;
+    fill.style.width = w + "%";
+    fill.style.left = (lastA >= 0 ? 50 : 50 - w) + "%";
+  }
+
+  // ---- рисование
+  let colors = {};
+  function readColors() {
+    const cs = getComputedStyle(document.documentElement);
+    for (const k of ["ink", "muted", "line", "sky", "hill", "hill-fill", "car", "flag", "accent", "surface"]) colors[k] = cs.getPropertyValue("--" + k).trim();
+  }
+
+  function fitCanvas(c) {
+    const dpr = window.devicePixelRatio || 1;
+    const r = c.getBoundingClientRect();
+    const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    return { ctx: c.getContext("2d"), w, h, dpr };
+  }
+
+  function drawTrack() {
+    const { ctx, w, h, dpr } = fitCanvas($("track"));
+    const padX = 14 * dpr, padTop = 34 * dpr, padBottom = 26 * dpr;
+    const s = Math.min((w - 2 * padX) / (MAX_X - MIN_X), (h - padTop - padBottom) / 1.05);
+    const ox = (w - s * (MAX_X - MIN_X)) / 2;
+    const baseY = h - padBottom;
+    const X = x => ox + (x - MIN_X) * s, Y = y => baseY - (y - 0.05) * s;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // стартовая зона
+    ctx.fillStyle = colors.line;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(X(-0.6), baseY);
+    for (let x = -0.6; x <= -0.4 + 1e-9; x += 0.01) ctx.lineTo(X(x), Y(height(x)));
+    ctx.lineTo(X(-0.4), baseY);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // холм
+    ctx.beginPath();
+    ctx.moveTo(X(MIN_X), baseY);
+    for (let i = 0; i <= 180; i++) { const x = MIN_X + (i / 180) * (MAX_X - MIN_X); ctx.lineTo(X(x), Y(height(x))); }
+    ctx.lineTo(X(MAX_X), baseY);
+    ctx.closePath();
+    ctx.fillStyle = colors["hill-fill"]; ctx.fill();
+    ctx.beginPath();
+    for (let i = 0; i <= 180; i++) { const x = MIN_X + (i / 180) * (MAX_X - MIN_X); i ? ctx.lineTo(X(x), Y(height(x))) : ctx.moveTo(X(x), Y(height(x))); }
+    ctx.strokeStyle = colors.hill; ctx.lineWidth = 2.5 * dpr; ctx.stroke();
+
+    // шкала позиции
+    ctx.fillStyle = colors.muted;
+    ctx.font = `${11 * dpr}px "IBM Plex Mono", monospace`;
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    for (const t of [-1.2, -0.9, -0.6, -0.3, 0, 0.3, 0.6]) {
+      ctx.fillRect(X(t) - 0.5 * dpr, baseY, 1 * dpr, 4 * dpr);
+      const label = (t < 0 ? "−" : "") + Math.abs(t).toFixed(1);
+      ctx.textAlign = t === -1.2 ? "left" : t === 0.6 ? "right" : "center";
+      ctx.fillText(label, X(t), baseY + 7 * dpr);
+    }
+
+    // флаг
+    const fx = X(GOAL_X), fy = Y(height(GOAL_X));
+    ctx.strokeStyle = colors.ink; ctx.lineWidth = 2 * dpr;
+    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx, fy - 0.16 * s); ctx.stroke();
+    ctx.fillStyle = colors.flag;
+    ctx.beginPath(); ctx.moveTo(fx, fy - 0.16 * s); ctx.lineTo(fx + 0.07 * s, fy - 0.14 * s); ctx.lineTo(fx, fy - 0.12 * s); ctx.closePath(); ctx.fill();
+
+    // машина: поворачивается по наклону
+    const cx = X(state.x), cy = Y(height(state.x));
+    const ang = -Math.atan(0.45 * 3 * Math.cos(3 * state.x));
+    const cw = 0.11 * s, ch = 0.035 * s, wr = 0.016 * s;
+    ctx.save();
+    ctx.translate(cx, cy); ctx.rotate(ang);
+    ctx.fillStyle = colors.car;
+    roundRect(ctx, -cw / 2, -wr - ch - 2 * dpr, cw, ch, 4 * dpr); ctx.fill();
+    roundRect(ctx, -cw * 0.22, -wr - ch * 1.75 - 2 * dpr, cw * 0.42, ch * 0.8, 3 * dpr); ctx.fill();
+    ctx.fillStyle = colors.ink;
+    for (const dx of [-cw * 0.3, cw * 0.3]) { ctx.beginPath(); ctx.arc(dx, -wr, wr, 0, Math.PI * 2); ctx.fill(); }
+    // стрелка силы вдоль склона
+    if (Math.abs(lastA) > 0.01) {
+      const len = lastA * 0.12 * s, y0 = -wr - ch - 12 * dpr;
+      ctx.strokeStyle = colors.accent; ctx.fillStyle = colors.accent; ctx.lineWidth = 3 * dpr;
+      ctx.beginPath(); ctx.moveTo(0, y0); ctx.lineTo(len, y0); ctx.stroke();
+      const dir = Math.sign(len), hd = 7 * dpr;
+      ctx.beginPath(); ctx.moveTo(len + dir * hd, y0); ctx.lineTo(len, y0 - hd * 0.7); ctx.lineTo(len, y0 + hd * 0.7); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+
+  function drawPhase() {
+    const { ctx, w, h, dpr } = fitCanvas($("phase"));
+    const pad = 10 * dpr;
+    const X = x => pad + (x - MIN_X) / (MAX_X - MIN_X) * (w - 2 * pad);
+    const Y = v => h / 2 - v / MAX_V * (h / 2 - pad);
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = colors.line; ctx.lineWidth = 1 * dpr;
+    ctx.beginPath(); ctx.moveTo(pad, h / 2); ctx.lineTo(w - pad, h / 2); ctx.stroke();
+    ctx.setLineDash([4 * dpr, 4 * dpr]);
+    ctx.strokeStyle = colors.flag;
+    ctx.beginPath(); ctx.moveTo(X(GOAL_X), pad); ctx.lineTo(X(GOAL_X), h - pad); ctx.stroke();
+    if (ghost.length > 1) {
+      ctx.strokeStyle = colors.muted; ctx.globalAlpha = 0.6;
+      line(ctx, ghost, X, Y); ctx.globalAlpha = 1;
+    }
+    ctx.setLineDash([]);
+    ctx.strokeStyle = colors.accent; ctx.lineWidth = 2 * dpr;
+    line(ctx, path, X, Y);
+    ctx.fillStyle = colors.car;
+    ctx.beginPath(); ctx.arc(X(state.x), Y(state.v), 4.5 * dpr, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function line(ctx, pts, X, Y) {
+    ctx.beginPath();
+    pts.forEach(([x, v], i) => (i ? ctx.lineTo(X(x), Y(v)) : ctx.moveTo(X(x), Y(v))));
+    ctx.stroke();
+  }
+
+  function draw() { drawTrack(); drawPhase(); }
+
+  // ---- цикл: 60 шагов среды в секунду при скорости ×1
+  let prev = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.1, (now - prev) / 1000); prev = now;
+    if (running) {
+      acc += dt * 60 * speed;
+      while (acc >= 1 && running) { tick(); acc -= 1; }
+      updateReadouts();
+    }
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  // ---- управление
+  function setPolicy(p) {
+    policy = p;
+    document.querySelectorAll("[data-policy]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.policy === p)));
+    $("policy-note").textContent = POLICIES[p].note;
+    $("manual-pad").classList.toggle("on", p === "manual");
+    reset();
+  }
+  document.querySelectorAll("[data-policy]").forEach(b => b.addEventListener("click", () => setPolicy(b.dataset.policy)));
+  document.querySelectorAll("[data-speed]").forEach(b => b.addEventListener("click", () => {
+    speed = parseFloat(b.dataset.speed);
+    document.querySelectorAll("[data-speed]").forEach(o => o.setAttribute("aria-pressed", String(o === b)));
+  }));
+  $("run").addEventListener("click", toggleRun);
+  $("reset").addEventListener("click", reset);
+  $("start-x").addEventListener("input", e => { $("start-x-val").textContent = fmt(parseFloat(e.target.value), 3); reset(); });
+  $("random-start").addEventListener("click", () => {
+    const x0 = -0.6 + Math.random() * 0.2;
+    $("start-x").value = x0.toFixed(3);
+    $("start-x-val").textContent = fmt(parseFloat($("start-x").value), 3);
+    reset();
+  });
+
+  function hold(id, key) {
+    const el = $(id);
+    const on = e => { e.preventDefault(); keys[key] = true; el.classList.add("held"); if (!running && !outcome) toggleRun(); };
+    const off = () => { keys[key] = false; el.classList.remove("held"); };
+    el.addEventListener("pointerdown", on);
+    ["pointerup", "pointerleave", "pointercancel"].forEach(t => el.addEventListener(t, off));
+  }
+  hold("pad-left", "left"); hold("pad-right", "right");
+
+  window.addEventListener("keydown", e => {
+    if (e.target.closest && e.target.closest("input")) return;
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      keys[e.key === "ArrowLeft" ? "left" : "right"] = true;
+      if (policy === "manual" && !running && !outcome) toggleRun();
+      e.preventDefault();
+    } else if (e.key === " ") { e.preventDefault(); toggleRun(); }
+    else if (e.key === "r" || e.key === "R" || e.key === "к" || e.key === "К") reset();
+  });
+  window.addEventListener("keyup", e => {
+    if (e.key === "ArrowLeft") keys.left = false;
+    if (e.key === "ArrowRight") keys.right = false;
+  });
+
+  readColors();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readColors);
+  new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  setPolicy("cem");
+  requestAnimationFrame(frame);
+})();
+</script>
