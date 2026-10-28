@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Обучить (CEM)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/mountain_car_continuous.py",
+      "args": ["train"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Оценить на 100 эпизодах",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/mountain_car_continuous.py",
+      "args": ["evaluate"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Показать агента в окне",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/mountain_car_continuous.py",
+      "args": ["render"],
+      "console": "integratedTerminal"
+    }
+  ]
+}
